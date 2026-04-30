@@ -1,0 +1,32 @@
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1 0 auto;
+  padding: 1rem 1.25rem 2rem;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.nav-link-active {
+  color: #fff !important;
+  text-decoration: none;
+  padding: 0.5rem;
+}
+
+.nav-link-inactive {
+  color: #adb5bd !important;
+  text-decoration: none;
+  padding: 0.5rem;
+}
+
+.note-avatar {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 50%;
+}
