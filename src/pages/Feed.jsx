@@ -234,63 +234,69 @@ export default function Feed () {
         Showing notes (kinds 1 and 2) from you and your follows (kind 3). Newest first.
       </p>
       {error ? <Alert variant='danger'>{error}</Alert> : null}
-      {loading ? (
-        <div className='text-center py-5'>
-          <Spinner animation='border' />
-        </div>
-      ) : (
-        events.map((ev) => {
-          const prof = profiles[ev.pubkey] || {}
-          const name = prof.name || shortenPubkey(ev.pubkey)
-          let npubDisplay = ''
-          try {
-            npubDisplay = nip19.npubEncode(String(ev.pubkey).toLowerCase())
-          } catch {
-            npubDisplay = ev.pubkey
-          }
-          return (
-            <Card key={ev.id} className='mb-3'>
-              <Card.Header className='d-flex align-items-center gap-2 py-2'>
-                {prof.picture ? (
-                  <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
-                ) : (
-                  <div
-                    className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
-                  >
-                    {name.slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div className='flex-grow-1 min-width-0'>
-                  <div className='fw-semibold text-truncate'>{name}</div>
-                  <div className='small text-muted text-truncate' title={npubDisplay}>
-                    {shortenPubkey(npubDisplay)}
-                  </div>
-                </div>
-                <div className='small text-muted text-nowrap'>
-                  {new Date(ev.created_at * 1000).toLocaleString()}
-                </div>
-              </Card.Header>
-              <Card.Body>
-                <NoteContent
-                  content={ev.content}
-                  embeddedEvents={embeddedEvents}
-                  profiles={profiles}
-                  onNostrRefs={fetchEmbeddedEvents}
-                />
-              </Card.Body>
-            </Card>
+      {loading
+        ? (
+          <div className='text-center py-5'>
+            <Spinner animation='border' />
+          </div>
           )
-        })
-      )}
+        : (
+            events.map((ev) => {
+              const prof = profiles[ev.pubkey] || {}
+              const name = prof.name || shortenPubkey(ev.pubkey)
+              let npubDisplay = ''
+              try {
+                npubDisplay = nip19.npubEncode(String(ev.pubkey).toLowerCase())
+              } catch {
+                npubDisplay = ev.pubkey
+              }
+              return (
+                <Card key={ev.id} className='mb-3'>
+                  <Card.Header className='d-flex align-items-center gap-2 py-2'>
+                    {prof.picture
+                      ? (
+                        <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
+                        )
+                      : (
+                        <div
+                          className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
+                        >
+                          {name.slice(0, 2).toUpperCase()}
+                        </div>
+                        )}
+                    <div className='flex-grow-1 min-width-0'>
+                      <div className='fw-semibold text-truncate'>{name}</div>
+                      <div className='small text-muted text-truncate' title={npubDisplay}>
+                        {shortenPubkey(npubDisplay)}
+                      </div>
+                    </div>
+                    <div className='small text-muted text-nowrap'>
+                      {new Date(ev.created_at * 1000).toLocaleString()}
+                    </div>
+                  </Card.Header>
+                  <Card.Body>
+                    <NoteContent
+                      content={ev.content}
+                      embeddedEvents={embeddedEvents}
+                      profiles={profiles}
+                      onNostrRefs={fetchEmbeddedEvents}
+                    />
+                  </Card.Body>
+                </Card>
+              )
+            })
+          )}
       {!loading && !events.length ? <Alert variant='light'>No posts found yet. Try other relays or follow people.</Alert> : null}
-      {hasMore && events.length > 0 ? (
-        <div className='text-center mt-3'>
-          <Button variant='primary' onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? <Spinner animation='border' size='sm' className='me-2' /> : null}
-            Load more
-          </Button>
-        </div>
-      ) : null}
+      {hasMore && events.length > 0
+        ? (
+          <div className='text-center mt-3'>
+            <Button variant='primary' onClick={loadMore} disabled={loadingMore}>
+              {loadingMore ? <Spinner animation='border' size='sm' className='me-2' /> : null}
+              Load more
+            </Button>
+          </div>
+          )
+        : null}
     </div>
   )
 }

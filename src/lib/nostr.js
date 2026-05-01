@@ -15,9 +15,19 @@ const LS_RELAYS = 'troutstr_relays'
 const LS_PUBKEY = 'troutstr_pubkey'
 const LS_SECRET_HEX = 'troutstr_secret_hex'
 
-export function loadPersistedRelays () {
+function getStorage () {
   try {
-    const raw = localStorage.getItem(LS_RELAYS)
+    return typeof window !== 'undefined' ? window.localStorage : null
+  } catch {
+    return null
+  }
+}
+
+export function loadPersistedRelays () {
+  const storage = getStorage()
+  if (!storage) return { ...DEFAULT_RELAYS }
+  try {
+    const raw = storage.getItem(LS_RELAYS)
     if (!raw) return { ...DEFAULT_RELAYS }
     const parsed = JSON.parse(raw)
     if (parsed && typeof parsed === 'object') return parsed
@@ -26,27 +36,37 @@ export function loadPersistedRelays () {
 }
 
 export function saveRelays (relays) {
-  localStorage.setItem(LS_RELAYS, JSON.stringify(relays))
+  const storage = getStorage()
+  if (!storage) return
+  storage.setItem(LS_RELAYS, JSON.stringify(relays))
 }
 
 export function loadPersistedPubkey () {
-  return localStorage.getItem(LS_PUBKEY)
+  const storage = getStorage()
+  if (!storage) return null
+  return storage.getItem(LS_PUBKEY)
 }
 
 export function loadPersistedSecretHex () {
-  return localStorage.getItem(LS_SECRET_HEX)
+  const storage = getStorage()
+  if (!storage) return null
+  return storage.getItem(LS_SECRET_HEX)
 }
 
 export function persistSession ({ pubkeyHex, secretHex }) {
-  if (pubkeyHex) localStorage.setItem(LS_PUBKEY, pubkeyHex)
-  else localStorage.removeItem(LS_PUBKEY)
-  if (secretHex) localStorage.setItem(LS_SECRET_HEX, secretHex)
-  else localStorage.removeItem(LS_SECRET_HEX)
+  const storage = getStorage()
+  if (!storage) return
+  if (pubkeyHex) storage.setItem(LS_PUBKEY, pubkeyHex)
+  else storage.removeItem(LS_PUBKEY)
+  if (secretHex) storage.setItem(LS_SECRET_HEX, secretHex)
+  else storage.removeItem(LS_SECRET_HEX)
 }
 
 export function clearPersistedSession () {
-  localStorage.removeItem(LS_PUBKEY)
-  localStorage.removeItem(LS_SECRET_HEX)
+  const storage = getStorage()
+  if (!storage) return
+  storage.removeItem(LS_PUBKEY)
+  storage.removeItem(LS_SECRET_HEX)
 }
 
 export function normalizeRelayUrl (url) {

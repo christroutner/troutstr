@@ -119,15 +119,17 @@ export default function NoteContent ({
     return (
       <div key={key} className='border rounded mt-2 bg-light overflow-hidden'>
         <div className='d-flex align-items-center gap-2 py-2 px-2 border-bottom'>
-          {prof.picture ? (
-            <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
-          ) : (
-            <div
-              className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
-            >
-              {name.slice(0, 2).toUpperCase()}
-            </div>
-          )}
+          {prof.picture
+            ? (
+              <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
+              )
+            : (
+              <div
+                className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
+              >
+                {name.slice(0, 2).toUpperCase()}
+              </div>
+              )}
           <div className='flex-grow-1 min-width-0'>
             <div className='fw-semibold text-truncate'>{name}</div>
             <div className='small text-muted text-truncate' title={npubDisplay}>
