@@ -368,8 +368,10 @@ src/
     curationService.js
     classificationService.js
     feedQueryService.js
+    relayPollService.js
   jobs/
     classifyPosts.job.js
+    ingestOriginalPosts.job.js
   middleware/
     auth.js
     rateLimit.js
@@ -382,7 +384,158 @@ src/
 
 ---
 
-## 9) Client Compatibility Notes (Troutstr)
+## 9) Periodic Ingestion Controller (Timer-Based)
+
+This section defines the background ingestion system that periodically pulls fresh kind-1 events from relays, classifies new originals, and persists them to MongoDB.
+
+## 9.1 Goal
+
+- Poll multiple relays on a fixed interval.
+- Build candidate stream from users' follow lists.
+- Keep one-to-one mapping: one original post event -> one DB document.
+- Classify only newly discovered, unprocessed originals.
+
+## 9.2 Scheduling Strategy
+
+Use a timer-driven controller (for example `setInterval`) in the API process:
+
+- interval config: `INGEST_INTERVAL_MS` (default `60000`)
+- run-at-start: immediate first pass on process boot
+- overlap guard: skip tick if previous run still active
+
+Pseudo-flow:
+
+```js
+let isRunning = false
+setInterval(async () => {
+  if (isRunning) return
+  isRunning = true
+  try {
+    await runIngestionTick()
+  } finally {
+    isRunning = false
+  }
+}, INGEST_INTERVAL_MS)
+```
+
+## 9.3 Relay Configuration
+
+Relays are defined in config file (or env-injected JSON), for example:
+
+```js
+// config/relays.js
+export const INGEST_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nostr-pub.wellorder.net',
+  'wss://relay.nostr.info'
+]
+```
+
+Rules:
+
+- Use only configured read relays for ingestion polling.
+- Normalize URLs before use.
+- De-duplicate relay list at startup.
+
+## 9.4 Follow-List Source for Ingestion
+
+Two supported modes:
+
+1. **Per-request pull model (minimum)**
+   - Ingestion only happens on API request path.
+2. **Global pre-ingestion model (recommended)**
+   - Maintain tracked users collection (users who have requested curated feed).
+   - On each tick, for each tracked user:
+     - fetch latest kind-3 from relays
+     - parse `p` tags
+     - build author set: follows (+ optional self)
+
+Recommended collection:
+
+- `tracked_users`
+  - `pubkey` (unique)
+  - `lastSeenAt`
+  - `lastFollowSyncAt`
+  - `followSetHash`
+
+## 9.5 Ingestion Tick Algorithm
+
+For each tracked user:
+
+1. Resolve follow set from latest kind-3.
+2. Build relay query filters:
+   - `kinds: [1]`
+   - `authors: followSet`
+   - `since: lastIngestedAtByUser` (buffer by a few seconds to avoid clock drift)
+3. Query **multiple relays** and merge results.
+4. Deduplicate by `event.id`.
+5. Keep only originals (`kind===1` and no `e` tags).
+6. Validate event shape/signature (recommended).
+7. For each surviving event:
+   - upsert into `posts` by `eventId`
+   - if inserted new: classify with LLM and update categories/weights
+   - if already exists: skip reclassification unless stale policy/version
+8. Update user's ingestion cursor/watermark.
+
+## 9.6 Duplicate Rejection and One-to-One Guarantee
+
+Requirements:
+
+- `posts.eventId` must be unique indexed.
+- Use atomic upsert:
+  - `updateOne({ eventId }, { $setOnInsert: ... }, { upsert: true })`
+- Treat duplicate key errors as benign race outcomes.
+
+One-to-one invariant:
+
+- exactly one DB record per original post event id.
+
+## 9.7 Classification Trigger Rules
+
+Classify only when:
+
+- post is newly inserted, OR
+- `classificationVersion` is outdated and reclassification is enabled.
+
+Do **not** classify:
+
+- replies
+- invalid event signatures
+- posts already classified with current policy version (unless forced)
+
+## 9.8 Fault Tolerance / Reliability
+
+- Relay timeout per query (for example 5-10s)
+- Per-relay failures should be soft; continue with remaining relays
+- Batch LLM classification with bounded concurrency
+- Retry classification with backoff on transient failures
+- Dead-letter/failure marker for persistent classification errors
+
+Recommended post-level fields:
+
+- `classificationStatus`: `pending|completed|failed`
+- `classificationError`: short machine-readable code
+- `classificationAttempts`: number
+
+## 9.9 Observability
+
+Emit per-tick metrics:
+
+- users processed
+- relays queried
+- events fetched
+- original posts kept
+- inserted vs duplicate counts
+- classification success/failure counts
+- run duration
+
+Log key ids:
+
+- `tickId`, `pubkey`, `relay`, `eventId`, `classificationStatus`
+
+---
+
+## 10) Client Compatibility Notes (Troutstr)
 
 - Keep response `items[].event` as valid Nostr event objects.
 - Troutstr can continue to use:
@@ -393,7 +546,7 @@ src/
 
 ---
 
-## 10) Security and Ops
+## 11) Security and Ops
 
 - Validate `pubkey`, `limit`, `cursor`, `since`, `category`.
 - Use CORS allowlist.
@@ -406,7 +559,7 @@ src/
 
 ---
 
-## 11) Example cURL
+## 12) Example cURL
 
 ```bash
 curl "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&limit=50"
@@ -420,7 +573,7 @@ curl "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&category=news&limi
 
 ---
 
-## 12) Acceptance Criteria
+## 13) Acceptance Criteria
 
 - Every stored document in `posts` represents an original kind-1 post only.
 - `eventId` uniqueness prevents duplicates.
@@ -428,3 +581,5 @@ curl "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&category=news&limi
 - Category labels and weights are persisted from validated LLM output.
 - Invalid LLM output fails safe and does not break endpoint responses.
 - Default Troutstr relay feed remains available and unaffected.
+- Timer ingestion polls configured relays periodically without overlapping runs.
+- New originals are upserted once and classified once per policy version.
