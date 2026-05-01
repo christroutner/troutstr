@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Card, Spinner } from 'react-bootstrap'
-import { nip19 } from 'nostr-tools'
+import { finalizeEvent, nip19 } from 'nostr-tools'
 import NoteContent from '../components/NoteContent'
 import { useNostr } from '../context/NostrContext'
 import {
@@ -32,10 +32,12 @@ function buildAuthors (pubkeyHex, followList) {
 }
 
 export default function Feed () {
-  const { pool: poolRef, pubkeyHex, follows, readUrls, refreshFollows } = useNostr()
+  const { pool: poolRef, pubkeyHex, secretKey, follows, readUrls, writeUrls, refreshFollows } = useNostr()
   const [events, setEvents] = useState([])
   const [profiles, setProfiles] = useState({})
   const [embeddedEvents, setEmbeddedEvents] = useState({})
+  const [likedEventIds, setLikedEventIds] = useState({})
+  const [likingEventIds, setLikingEventIds] = useState({})
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
@@ -154,6 +156,7 @@ export default function Feed () {
       const authorList = buildAuthors(pubkeyHex, followList)
       const first = await queryFeedPage(authorList, now)
       setEvents(first)
+      setLikedEventIds({})
       if (first.length < PAGE) setHasMore(false)
       if (first.length) {
         newestTs.current = Math.max(...first.map((e) => e.created_at)) + 1
@@ -166,6 +169,54 @@ export default function Feed () {
       setLoading(false)
     }
   }, [pubkeyHex, queryFeedPage, refreshFollows, fetchProfilesFor])
+
+  const likeEvent = useCallback(async (targetEvent) => {
+    const pool = poolRef.current
+    if (!targetEvent?.id) return
+    if (!pool) {
+      setError('Relay pool not ready yet.')
+      return
+    }
+    if (!secretKey || !pubkeyHex) {
+      setError('Like requires your private key in this session. Log in again with nsec.')
+      return
+    }
+    if (!writeUrls.length) {
+      setError('Enable at least one write relay in Settings to like posts.')
+      return
+    }
+    if (likedEventIds[targetEvent.id] || likingEventIds[targetEvent.id]) return
+
+    setError('')
+    setLikingEventIds((prev) => ({ ...prev, [targetEvent.id]: true }))
+    try {
+      const unsigned = {
+        kind: 7,
+        created_at: Math.floor(Date.now() / 1000),
+        tags: [
+          ['e', targetEvent.id],
+          ['p', targetEvent.pubkey]
+        ],
+        content: '+'
+      }
+      const signed = finalizeEvent(unsigned, secretKey)
+      const pubs = pool.publish(writeUrls, signed)
+      if (Array.isArray(pubs) && pubs.length > 0) {
+        await Promise.any(pubs.map((p) => Promise.resolve(p)))
+      } else {
+        await Promise.resolve(pubs)
+      }
+      setLikedEventIds((prev) => ({ ...prev, [targetEvent.id]: true }))
+    } catch (e) {
+      setError(e?.message || 'Failed to publish like event.')
+    } finally {
+      setLikingEventIds((prev) => {
+        const next = { ...prev }
+        delete next[targetEvent.id]
+        return next
+      })
+    }
+  }, [poolRef, secretKey, pubkeyHex, writeUrls, likedEventIds, likingEventIds])
 
   useEffect(() => {
     if (!pubkeyHex) return
@@ -282,6 +333,16 @@ export default function Feed () {
                       onNostrRefs={fetchEmbeddedEvents}
                     />
                   </Card.Body>
+                  <Card.Footer className='d-flex align-items-center gap-2'>
+                    <Button
+                      variant={likedEventIds[ev.id] ? 'success' : 'outline-secondary'}
+                      size='sm'
+                      onClick={() => likeEvent(ev)}
+                      disabled={Boolean(likingEventIds[ev.id]) || likedEventIds[ev.id]}
+                    >
+                      {likingEventIds[ev.id] ? 'Liking…' : likedEventIds[ev.id] ? 'Liked' : 'Like'}
+                    </Button>
+                  </Card.Footer>
                 </Card>
               )
             })

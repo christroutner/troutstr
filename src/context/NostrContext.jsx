@@ -20,7 +20,8 @@ import {
   pickLatestContactList,
   readRelayUrls,
   saveRelays,
-  secretKeyToHex
+  secretKeyToHex,
+  writeRelayUrls
 } from '../lib/nostr'
 
 const NostrContext = createContext(null)
@@ -52,6 +53,7 @@ export function NostrProvider ({ children }) {
   }, [])
 
   const readUrls = useMemo(() => readRelayUrls(relays), [relays])
+  const writeUrls = useMemo(() => writeRelayUrls(relays), [relays])
   const readUrlsKey = readUrls.join('|')
 
   const login = useCallback((input, { remember } = {}) => {
@@ -110,6 +112,7 @@ export function NostrProvider ({ children }) {
       relays,
       setRelays,
       readUrls,
+      writeUrls,
       pubkeyHex,
       secretKey,
       follows,
@@ -121,6 +124,7 @@ export function NostrProvider ({ children }) {
       relays,
       setRelays,
       readUrls,
+      writeUrls,
       pubkeyHex,
       secretKey,
       follows,
