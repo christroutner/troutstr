@@ -12,6 +12,11 @@ It focuses on a clean MVP experience:
 - Render media links (images/videos)
 - Resolve and embed linked Nostr events (`nevent` / `note`)
 - Navigate profile links from post content (`naddr` / `nprofile` / `npub`)
+- Optional **curated feed** tab (HTTP API) with category tags and scores on hover
+
+## Curated feed API
+
+Set the backend base URL under **Settings → Curated feed API**, or set `REACT_APP_CURATED_FEED_URL` when building (e.g. `http://localhost:8080`). The **Feed** page has a **Curated** tab that calls `GET /api/v1/feeds/curated?pubkey=…`. Your pubkey must be configured on the server.
 
 ## Tech Stack
 

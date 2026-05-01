@@ -1,12 +1,19 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Alert, Button, Form, Table } from 'react-bootstrap'
 import { useNostr } from '../context/NostrContext'
+import { normalizeBaseUrl } from '../lib/curated-feed'
 import { normalizeRelayUrl } from '../lib/nostr'
 
 export default function Settings () {
-  const { relays, setRelays } = useNostr()
+  const { relays, setRelays, curatedFeedBaseUrl, setCuratedFeedBaseUrl } = useNostr()
   const [newUrl, setNewUrl] = useState('')
   const [msg, setMsg] = useState('')
+  const [curatedInput, setCuratedInput] = useState(curatedFeedBaseUrl)
+  const [curatedMsg, setCuratedMsg] = useState('')
+
+  useEffect(() => {
+    setCuratedInput(curatedFeedBaseUrl)
+  }, [curatedFeedBaseUrl])
 
   const rows = Object.entries(relays).sort(([a], [b]) => a.localeCompare(b))
 
@@ -38,6 +45,17 @@ export default function Settings () {
     }
     setRelays((prev) => ({ ...prev, [n]: { read: true, write: true } }))
     setNewUrl('')
+  }
+
+  const saveCuratedUrl = () => {
+    setCuratedMsg('')
+    const n = normalizeBaseUrl(curatedInput)
+    if (curatedInput.trim() && !n) {
+      setCuratedMsg('Enter a valid URL (e.g. http://localhost:8080).')
+      return
+    }
+    setCuratedFeedBaseUrl(n)
+    setCuratedMsg(n ? 'Saved. Use the Curated tab on the Feed.' : 'Cleared curated API URL.')
   }
 
   return (
@@ -97,6 +115,27 @@ export default function Settings () {
         />
         <Button variant='secondary' onClick={addRelay}>
           Add relay
+        </Button>
+      </div>
+
+      <hr className='my-5' />
+
+      <h2 className='h4 mb-3'>Curated feed API</h2>
+      <p className='text-secondary'>
+        Base URL of the Troutstr curated feed backend (no trailing slash). Your pubkey must be allowed by that server.
+        You can override with <code className='small'>REACT_APP_CURATED_FEED_URL</code> at build time; this field is
+        stored in the browser.
+      </p>
+      {curatedMsg ? <Alert variant='info'>{curatedMsg}</Alert> : null}
+      <div className='d-flex flex-wrap gap-2 align-items-start'>
+        <Form.Control
+          style={{ maxWidth: '28rem' }}
+          placeholder='http://localhost:8080'
+          value={curatedInput}
+          onChange={(e) => setCuratedInput(e.target.value)}
+        />
+        <Button variant='secondary' onClick={saveCuratedUrl}>
+          Save
         </Button>
       </div>
     </div>

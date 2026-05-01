@@ -9,6 +9,10 @@ import React, {
 } from 'react'
 import { SimplePool } from 'nostr-tools'
 import {
+  loadCuratedFeedBaseUrl,
+  saveCuratedFeedBaseUrl
+} from '../lib/curated-feed'
+import {
   clearPersistedSession,
   decodeLoginPrivateKey,
   followPubkeysFromContactEvent,
@@ -35,6 +39,16 @@ export function NostrProvider ({ children }) {
     return h ? hexToSecretKey(h) : null
   })
   const [follows, setFollows] = useState([])
+  const [curatedFeedBaseUrl, setCuratedFeedBaseUrlState] = useState(() =>
+    loadCuratedFeedBaseUrl()
+  )
+
+  const setCuratedFeedBaseUrl = useCallback((next) => {
+    setCuratedFeedBaseUrlState((prev) => {
+      const v = typeof next === 'function' ? next(prev) : next
+      return saveCuratedFeedBaseUrl(v)
+    })
+  }, [])
 
   useEffect(() => {
     poolRef.current = new SimplePool()
@@ -118,7 +132,9 @@ export function NostrProvider ({ children }) {
       follows,
       refreshFollows,
       login,
-      logout
+      logout,
+      curatedFeedBaseUrl,
+      setCuratedFeedBaseUrl
     }),
     [
       relays,
@@ -130,7 +146,9 @@ export function NostrProvider ({ children }) {
       follows,
       refreshFollows,
       login,
-      logout
+      logout,
+      curatedFeedBaseUrl,
+      setCuratedFeedBaseUrl
     ]
   )
 

@@ -22,6 +22,16 @@
   "eslintConfig": {
     "extends": [
       "react-app"
+    ],
+    "overrides": [
+      {
+        "files": [
+          "src/context/NostrContext.jsx"
+        ],
+        "rules": {
+          "no-unused-vars": "off"
+        }
+      }
     ]
   },
   "browserslist": {

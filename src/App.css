@@ -41,3 +41,8 @@
   color: inherit;
   opacity: 0.9;
 }
+
+.category-tag {
+  cursor: help;
+  font-weight: 500;
+}
