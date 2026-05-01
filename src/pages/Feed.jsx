@@ -4,7 +4,7 @@ import { finalizeEvent } from 'nostr-tools'
 import { Link } from 'react-router-dom'
 import FeedPostCard from '../components/FeedPostCard'
 import { useNostr } from '../context/NostrContext'
-import { fetchCuratedFeedPage } from '../lib/curated-feed'
+import { CURATED_CATEGORY_TAXONOMY, fetchCuratedFeedPage } from '../lib/curated-feed'
 import {
   dedupeById,
   parseProfileContent,
@@ -77,6 +77,8 @@ export default function Feed () {
   const [curatedError, setCuratedError] = useState('')
   const [curatedCursor, setCuratedCursor] = useState(null)
   const [curatedHasMore, setCuratedHasMore] = useState(false)
+  /** Server-side category filter for curated API (`?category=`). Default per product request. */
+  const [curatedCategory, setCuratedCategory] = useState('media')
 
   const authors = useMemo(() => buildAuthors(pubkeyHex, follows), [pubkeyHex, follows])
   const readUrlsKey = readUrls.join('|')
@@ -248,7 +250,8 @@ export default function Feed () {
       const data = await fetchCuratedFeedPage({
         baseUrl: curatedFeedBaseUrl,
         pubkey: pubkeyHex,
-        limit: PAGE
+        limit: PAGE,
+        category: curatedCategory
       })
       const items = Array.isArray(data.items) ? data.items : []
       const evs = items.map((it) => it.event).filter(Boolean)
@@ -269,7 +272,7 @@ export default function Feed () {
     } finally {
       setCuratedLoading(false)
     }
-  }, [pubkeyHex, curatedFeedBaseUrl, fetchProfilesFor, fetchReplySummariesFor])
+  }, [pubkeyHex, curatedFeedBaseUrl, curatedCategory, fetchProfilesFor, fetchReplySummariesFor])
 
   const loadMoreCurated = async () => {
     if (!curatedHasMore || curatedLoadingMore || !curatedCursor || !pubkeyHex || !curatedFeedBaseUrl) return
@@ -280,7 +283,8 @@ export default function Feed () {
         baseUrl: curatedFeedBaseUrl,
         pubkey: pubkeyHex,
         limit: PAGE,
-        cursor: curatedCursor
+        cursor: curatedCursor,
+        category: curatedCategory
       })
       const items = Array.isArray(data.items) ? data.items : []
       const newEvs = items.map((it) => it.event).filter(Boolean)
@@ -368,7 +372,7 @@ export default function Feed () {
   useEffect(() => {
     if (!pubkeyHex || feedTab !== 'curated' || !curatedFeedBaseUrl) return
     initialLoadCurated()
-  }, [pubkeyHex, feedTab, curatedFeedBaseUrl, initialLoadCurated])
+  }, [pubkeyHex, feedTab, curatedFeedBaseUrl, curatedCategory, initialLoadCurated])
 
   const loadMore = async () => {
     if (!hasMore || loadingMore || !events.length || !authors.length) return
@@ -528,8 +532,21 @@ export default function Feed () {
               : (
                 <>
                   <p className='text-secondary small'>
-                    Posts from the curated feed service. Categories show model-assigned labels (hover for score).
+                    Posts from the curated feed service. Filter by category (API <code className='small'>?category=</code>
+                    ). Tags on each card show model-assigned labels (hover for score).
                   </p>
+                  <div className='d-flex flex-wrap gap-2 mb-3' role='group' aria-label='Curated category filter'>
+                    {CURATED_CATEGORY_TAXONOMY.map((cat) => (
+                      <Button
+                        key={cat}
+                        size='sm'
+                        variant={curatedCategory === cat ? 'primary' : 'outline-secondary'}
+                        onClick={() => setCuratedCategory(cat)}
+                      >
+                        {cat.replace(/_/g, ' ')}
+                      </Button>
+                    ))}
+                  </div>
                   {curatedError ? <Alert variant='danger'>{curatedError}</Alert> : null}
                   {curatedLoading
                     ? (

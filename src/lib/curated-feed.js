@@ -1,5 +1,21 @@
 const LS_CURATED_BASE = 'troutstr_curated_feed_base'
 
+/** Aligned with curated-feed API spec taxonomy; used for filter buttons on the Curated tab. */
+export const CURATED_CATEGORY_TAXONOMY = Object.freeze([
+  'news',
+  'opinion',
+  'question',
+  'educational',
+  'resource',
+  'personal_update',
+  'announcement',
+  'promotional',
+  'community',
+  'entertainment',
+  'media',
+  'longform'
+])
+
 /**
  * @returns {string} Origin only, e.g. http://localhost:8080 (no trailing slash)
  */
@@ -38,10 +54,10 @@ export function normalizeBaseUrl (url) {
 }
 
 /**
- * @param {{ baseUrl: string, pubkey: string, limit?: number, cursor?: string }} opts
+ * @param {{ baseUrl: string, pubkey: string, limit?: number, cursor?: string, category?: string }} opts
  * @returns {Promise<object>} API JSON body
  */
-export async function fetchCuratedFeedPage ({ baseUrl, pubkey, limit = 50, cursor }) {
+export async function fetchCuratedFeedPage ({ baseUrl, pubkey, limit = 50, cursor, category }) {
   const base = normalizeBaseUrl(baseUrl)
   if (!base) throw new Error('Curated feed base URL is not configured.')
   const pk = String(pubkey || '').toLowerCase().trim()
@@ -51,6 +67,9 @@ export async function fetchCuratedFeedPage ({ baseUrl, pubkey, limit = 50, curso
   u.searchParams.set('pubkey', pk)
   u.searchParams.set('limit', String(Math.min(100, Math.max(1, limit))))
   if (cursor) u.searchParams.set('cursor', cursor)
+  if (category && String(category).trim()) {
+    u.searchParams.set('category', String(category).toLowerCase().trim())
+  }
 
   const res = await fetch(u.toString())
   const body = await res.json().catch(() => ({}))
