@@ -5,8 +5,9 @@
 Troutstr is a Nostr web client that prioritizes a simple, understandable React architecture while supporting core social features:
 
 - login with `nsec`
-- follow-based feed
-- relay configuration
+- follow-based relay feed (default)
+- optional **curated** feed tab backed by a separate HTTP API ([`troutstr-be`](../../troutstr-be))
+- relay configuration and optional curated API base URL
 - post/reply exploration
 - event embedding
 
@@ -31,7 +32,7 @@ The reference client (Astral) used a complex stack (Vue/Quasar, workers, sql.js)
    - decoding keys, relay URL normalization, event sort/dedupe helpers, profile/contact parsing
 2. **State/provider layer**
    - `src/context/NostrContext.jsx`
-   - owns session, relays, follows, and pool lifecycle
+   - owns session, relays, follows, curated feed base URL, and pool lifecycle
 3. **Page orchestration layer**
    - `src/pages/*.jsx`
    - performs event queries and assembles view models

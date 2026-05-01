@@ -544,6 +544,15 @@ Log key ids:
   - existing render components (`NoteContent`, profile fetches, embeds)
 - Curated feed mode should be switchable and non-breaking when API fails.
 
+### Implemented mapping (reference client)
+
+The Troutstr app ([`nostr/troutstr`](../../troutstr)):
+
+- Persists curated API origin via **Settings** and `localStorage` (`src/lib/curated-feed.js`); optional build-time `REACT_APP_CURATED_FEED_URL`.
+- **Feed** page: **Relays** vs **Curated** tabs; curated requests use `GET /api/v1/feeds/curated` with `pubkey`, `cursor`, and `category` (taxonomy label). Default selected category in the UI is **`media`**.
+- Renders `items[].meta.categories` as a tag cloud; hover shows **weight** (score).
+- Viewer `pubkey` must be listed as a **tracked user** on the server (`troutstr-be` `TRACKED_NPUBS` or `src/config/tracked-npubs.json`); otherwise `403 PUBKEY_NOT_CONFIGURED`.
+
 ---
 
 ## 11) Security and Ops

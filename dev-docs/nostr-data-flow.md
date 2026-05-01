@@ -12,6 +12,16 @@
    - media URLs render inline
    - `nostr:*` links may trigger event embed fetches or in-app routing
 
+## Curated feed tab (HTTP)
+
+When the user selects the **Curated** tab on the Feed and a base URL is configured (`NostrContext` / Settings / `REACT_APP_CURATED_FEED_URL`):
+
+1. `fetchCuratedFeedPage` in `src/lib/curated-feed.js` calls `GET /api/v1/feeds/curated` with `pubkey`, optional `cursor`, and optional `category` (taxonomy label).
+2. Response `items[].event` is rendered like relay events; `items[].meta.categories` drives the tag cloud (scores in tooltips).
+3. Profile enrichment for visible authors still uses relays + `SimplePool` (same as relay tab).
+
+The backend must list the viewer’s pubkey as a tracked user; otherwise the API returns `403`.
+
 ## Query Strategy
 
 - **Feed pages:** page-sized historical queries with `until` cursor

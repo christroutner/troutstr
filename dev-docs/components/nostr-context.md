@@ -12,6 +12,7 @@
 - authenticated user session (`pubkeyHex`, `secretKey`)
 - relay preferences (read/write map)
 - follow list state (kind-3 derived)
+- **curated feed API base URL** (`curatedFeedBaseUrl`, persisted via `src/lib/curated-feed.js` and used by the Feed page’s Curated tab)
 
 Pages and components consume this via `useNostr()`.
 
@@ -25,7 +26,7 @@ Pages and components consume this via `useNostr()`.
 
 ## Persistence Choices
 
-- Relay config and session identity are persisted in `localStorage`
+- Relay config, session identity, and curated API base URL are persisted in `localStorage` (see `src/lib/nostr.js` and `src/lib/curated-feed.js`)
 - Private key persistence is optional and explicit via login flow
 
 This is a conscious MVP tradeoff (simplicity over hardened secret management).
@@ -41,8 +42,9 @@ This is a conscious MVP tradeoff (simplicity over hardened secret management).
 - `login(input, { remember })`
 - `logout()`
 - `setRelays(next)`
+- `setCuratedFeedBaseUrl(url)`
 - `refreshFollows()`
-- runtime data (`pool`, `readUrls`, `writeUrls`, `pubkeyHex`, `secretKey`, `follows`)
+- runtime data (`pool`, `readUrls`, `writeUrls`, `pubkeyHex`, `secretKey`, `follows`, `curatedFeedBaseUrl`)
 
 ## Why Context Instead of Global Store Library
 

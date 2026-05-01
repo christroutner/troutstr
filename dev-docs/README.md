@@ -2,12 +2,21 @@
 
 This documentation explains Troutstr's architecture, major design decisions, and how app components connect.
 
+## Repositories
+
+| Repo | Role |
+|------|------|
+| [`nostr/troutstr`](../) (this React app) | Browser client: relay feed + optional curated tab, profiles, posts |
+| [`nostr/troutstr-be`](../../troutstr-be) | Curated feed HTTP API, MongoDB, ingestion, LLM categorization |
+
+API contracts shared between them live here under **curated-feed-api-spec.md**.
+
 ## Documentation Map
 
 - [`architecture-overview.md`](./architecture-overview.md)
   - System boundaries, app layers, and key tradeoffs
 - [`nostr-data-flow.md`](./nostr-data-flow.md)
-  - How data moves from relays into UI
+  - How data moves from relays (and optionally HTTP) into UI
 - [`curated-feed-api-spec.md`](./curated-feed-api-spec.md)
   - REST API specification for optional curated feed mode
 - [`components/nostr-context.md`](./components/nostr-context.md)
@@ -21,7 +30,8 @@ This documentation explains Troutstr's architecture, major design decisions, and
 
 1. Start with `architecture-overview.md`
 2. Continue with `nostr-data-flow.md`
-3. Read component and page docs for implementation detail
+3. If you work on curated mode, read `curated-feed-api-spec.md` and the `troutstr-be` README
+4. Read component and page docs for implementation detail
 
 ## Scope Notes
 

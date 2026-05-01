@@ -17,10 +17,9 @@
 
 ### Feed (`src/pages/Feed.jsx`)
 
-- Loads original posts from `[self + follows]`
-- Fetches profile metadata and reply counts
-- Supports likes and replies modal
-- Supports embedded event resolution
+- **Tabs:** **Relays** (default) — original posts from `[self + follows]` via `SimplePool`; **Curated** — posts from `GET /api/v1/feeds/curated` when `curatedFeedBaseUrl` is set
+- Relays tab: fetches profile metadata and reply counts; likes; replies modal; embedded event resolution
+- Curated tab: category filter buttons (taxonomy aligned with API); default category **`media`**; tag cloud with score tooltips on each post (`FeedPostCard` + `CategoryTagCloud`)
 
 ### Post (`src/pages/Post.jsx`)
 
@@ -37,7 +36,8 @@
 ### Settings (`src/pages/Settings.jsx`)
 
 - Relay CRUD and read/write toggles
-- Persists relay map used by context
+- Curated feed API base URL field (saved to context / local storage)
+- Persists relay map and curated URL used by context
 
 ### Login (`src/pages/Login.jsx`)
 

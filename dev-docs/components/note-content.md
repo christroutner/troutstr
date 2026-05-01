@@ -16,6 +16,10 @@
 
 It is used across feed cards, post pages, profile summaries, and replies.
 
+## Feed card composition
+
+[`FeedPostCard`](../../src/components/FeedPostCard.jsx) wraps `NoteContent` for both relay and curated feeds. For curated items it also renders [`CategoryTagCloud`](../../src/components/CategoryTagCloud.jsx) above the body when `meta.categories` is present.
+
 ## Parsing Pipeline
 
 1. Tokenize content into text and URL/nostr tokens
