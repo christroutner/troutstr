@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { nip19 } from 'nostr-tools'
 import { Link } from 'react-router-dom'
 
 const TOKEN_REGEX = /(https?:\/\/[^\s<>'"()[\]{}]+|nostr:[^\s<>'"()[\]{}]+)/gi
+const CONTENT_PREVIEW_LIMIT = 1000
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i
 const VIDEO_EXT = /\.(mp4|webm|ogg)(\?|$)/i
@@ -55,6 +56,33 @@ function decodeNostrRef (value) {
   if (decoded.type === 'note' && typeof decoded.data === 'string') {
     return { type: decoded.type, id: decoded.data, relays: [], entity }
   }
+  if (decoded.type === 'naddr' && decoded.data?.pubkey) {
+    return {
+      type: decoded.type,
+      id: null,
+      relays: Array.isArray(decoded.data.relays) ? decoded.data.relays : [],
+      entity,
+      profilePubkey: String(decoded.data.pubkey).toLowerCase()
+    }
+  }
+  if (decoded.type === 'nprofile' && decoded.data?.pubkey) {
+    return {
+      type: decoded.type,
+      id: null,
+      relays: Array.isArray(decoded.data.relays) ? decoded.data.relays : [],
+      entity,
+      profilePubkey: String(decoded.data.pubkey).toLowerCase()
+    }
+  }
+  if (decoded.type === 'npub' && typeof decoded.data === 'string') {
+    return {
+      type: decoded.type,
+      id: null,
+      relays: [],
+      entity,
+      profilePubkey: String(decoded.data).toLowerCase()
+    }
+  }
   return null
 }
 
@@ -65,15 +93,19 @@ export default function NoteContent ({
   onNostrRefs
 }) {
   const text = content ?? ''
+  const [expanded, setExpanded] = useState(false)
+  const isLong = text.length > CONTENT_PREVIEW_LIMIT
+  const visibleText = !isLong || expanded ? text : text.slice(0, CONTENT_PREVIEW_LIMIT)
+
   const { parts, nostrRefs } = useMemo(() => {
     const nextParts = []
     const refs = []
     let last = 0
     let m
     const re = new RegExp(TOKEN_REGEX.source, TOKEN_REGEX.flags)
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(visibleText)) !== null) {
       if (m.index > last) {
-        nextParts.push({ type: 'text', value: text.slice(last, m.index) })
+        nextParts.push({ type: 'text', value: visibleText.slice(last, m.index) })
       }
       const rawToken = m[0]
       const tokenValue = rawToken.replace(TRAILING_PUNCTUATION, '')
@@ -90,14 +122,14 @@ export default function NoteContent ({
       }
       last = m.index + m[0].length
     }
-    if (last < text.length) {
-      nextParts.push({ type: 'text', value: text.slice(last) })
+    if (last < visibleText.length) {
+      nextParts.push({ type: 'text', value: visibleText.slice(last) })
     }
     if (!nextParts.length) {
-      nextParts.push({ type: 'text', value: text })
+      nextParts.push({ type: 'text', value: visibleText })
     }
     return { parts: nextParts, nostrRefs: refs }
-  }, [text])
+  }, [visibleText])
 
   useEffect(() => {
     if (nostrRefs.length > 0 && typeof onNostrRefs === 'function') {
@@ -162,6 +194,15 @@ export default function NoteContent ({
         }
         const url = p.value
         if (p.type === 'nostr') {
+          if (p.ref?.profilePubkey) {
+            return (
+              <span key={i} className='d-block my-1'>
+                <Link to={`/profile/${p.ref.profilePubkey}`}>
+                  {url}
+                </Link>
+              </span>
+            )
+          }
           const href = p.ref?.entity ? `https://njump.me/${p.ref.entity}` : '#'
           return (
             <span key={i} className='d-block my-1'>
@@ -198,6 +239,21 @@ export default function NoteContent ({
           </a>
         )
       })}
+      {isLong && !expanded
+        ? (
+          <span>
+            ...
+            {' '}
+            <button
+              type='button'
+              className='btn btn-link btn-sm p-0 align-baseline'
+              onClick={() => setExpanded(true)}
+            >
+              Show More
+            </button>
+          </span>
+          )
+        : null}
     </div>
   )
 }
