@@ -391,6 +391,9 @@ export default function Feed () {
                         </div>
                       </div>
                     </Link>
+                    <Link to={`/post/${ev.id}`} className='small text-decoration-none'>
+                      Open
+                    </Link>
                     <div className='small text-muted text-nowrap'>
                       {new Date(ev.created_at * 1000).toLocaleString()}
                     </div>

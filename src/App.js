@@ -5,6 +5,7 @@ import NavMenu from './components/NavMenu'
 import { NostrProvider, useNostr } from './context/NostrContext'
 import Feed from './pages/Feed'
 import Login from './pages/Login'
+import Post from './pages/Post'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 
@@ -45,6 +46,14 @@ function AppShell () {
             element={
               <Protected>
                 <Profile />
+              </Protected>
+            }
+          />
+          <Route
+            path='/post/:eventId'
+            element={
+              <Protected>
+                <Post />
               </Protected>
             }
           />
