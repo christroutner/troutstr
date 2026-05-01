@@ -90,7 +90,8 @@ export default function NoteContent ({
   content,
   embeddedEvents = {},
   profiles = {},
-  onNostrRefs
+  onNostrRefs,
+  embedDepth = 0
 }) {
   const text = content ?? ''
   const [expanded, setExpanded] = useState(false)
@@ -137,6 +138,8 @@ export default function NoteContent ({
     }
   }, [nostrRefs, onNostrRefs])
 
+  const canRenderEmbedded = embedDepth < 1
+
   function renderEmbeddedEvent (ref, key) {
     if (!ref?.id) return null
     const ev = embeddedEvents[ref.id]
@@ -176,7 +179,13 @@ export default function NoteContent ({
           </div>
         </div>
         <div className='p-2' style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {ev.content || ''}
+          <NoteContent
+            content={ev.content}
+            embeddedEvents={embeddedEvents}
+            profiles={profiles}
+            onNostrRefs={onNostrRefs}
+            embedDepth={embedDepth + 1}
+          />
         </div>
       </div>
     )
@@ -209,7 +218,7 @@ export default function NoteContent ({
               <a href={href} target='_blank' rel='noopener noreferrer'>
                 {url}
               </a>
-              {renderEmbeddedEvent(p.ref, `${i}-${p.ref?.id || 'nostr'}`)}
+              {canRenderEmbedded ? renderEmbeddedEvent(p.ref, `${i}-${p.ref?.id || 'nostr'}`) : null}
             </span>
           )
         }
