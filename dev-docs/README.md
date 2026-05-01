@@ -8,6 +8,8 @@ This documentation explains Troutstr's architecture, major design decisions, and
   - System boundaries, app layers, and key tradeoffs
 - [`nostr-data-flow.md`](./nostr-data-flow.md)
   - How data moves from relays into UI
+- [`curated-feed-api-spec.md`](./curated-feed-api-spec.md)
+  - REST API specification for optional curated feed mode
 - [`components/nostr-context.md`](./components/nostr-context.md)
   - Session state, relay config, and `SimplePool` lifecycle
 - [`components/note-content.md`](./components/note-content.md)
