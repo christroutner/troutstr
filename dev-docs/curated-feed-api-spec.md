@@ -1,80 +1,64 @@
-# Curated Feed API Specification (Express.js)
+# Curated Feed API Specification (Express.js + MongoDB + Mongoose)
 
 ## Purpose
 
-This specification defines a REST API for a server-side curated feed that integrates cleanly with Troutstr while preserving compatibility with the existing Nostr event rendering pipeline.
+This specification defines a server-side curated feed API that integrates with Troutstr's existing client rendering pipeline. The default feed remains relay-derived; curated feed is an optional second feed source.
 
-The client's current relay-derived feed remains the default. This API adds an optional second feed mode (`curated`).
+This version adds:
 
-## Design Goals
-
-- Return data in a shape that the current client can consume with minimal transformation.
-- Keep event-level compatibility with Nostr (`id`, `pubkey`, `kind`, `content`, `tags`, `sig`, `created_at`).
-- Support paging and deterministic ordering.
-- Allow server-side filtering/ranking while staying transparent and debuggable.
-
-## Non-Goals
-
-- Replacing the default relay feed.
-- Defining moderation policy details.
-- Supporting post creation/publishing through this API.
+- MongoDB persistence of original posts
+- Mongoose schemas and indexes
+- LLM-driven post categorization labels and weights
+- Prompt/response contract for robust category extraction
 
 ---
 
-## 1) API Overview
+## 1) Core Requirements
 
-Base path:
-
-- `/api/v1`
-
-Primary endpoint:
-
-- `GET /api/v1/feeds/curated`
-
-Supporting endpoint:
-
-- `GET /api/v1/health`
-
-Optional explain endpoint:
-
-- `GET /api/v1/feeds/curated/explain`
+- API base path: `/api/v1`
+- Primary endpoint: `GET /api/v1/feeds/curated`
+- Supporting endpoint: `GET /api/v1/health`
+- Store each **original post** in MongoDB (not replies).
+- Use `mongoose` for DB models and queries.
+- Return Nostr-compatible event payloads so Troutstr can render without major changes.
 
 ---
 
-## 2) Authentication and Identity
+## 2) Original Post Definition
 
-The curated feed is personalized to the logged-in user.
+For this system, an event is an **original post** when:
 
-Recommended approach:
+- `kind === 1`
+- tags do **not** contain an `e` reference tag
 
-1. Client sends:
-   - `pubkey` (hex, 64 chars), and
-   - a signed challenge token (NIP-42 style or custom challenge/signature scheme).
-2. API verifies signature corresponds to `pubkey`.
+Implementation hint:
 
-MVP fallback (less secure):
+```js
+function isOriginalPost (ev) {
+  if (!ev || ev.kind !== 1) return false
+  const hasETag = (ev.tags || []).some((t) => Array.isArray(t) && t[0] === 'e' && t[1])
+  return !hasETag
+}
+```
 
-- Accept `pubkey` without proof and rely on rate limits.
-
-### Required request identity field
-
-- `pubkey`: lowercase 64-char hex string.
+Replies are never inserted into `posts` collection in this spec.
 
 ---
 
-## 3) Endpoint Specification
+## 3) API Endpoints
 
 ## 3.1 `GET /api/v1/feeds/curated`
 
-Returns a curated list of Nostr events for a user.
+Returns curated original posts for a specific user.
 
 ### Query Parameters
 
-- `pubkey` (required): user pubkey hex.
-- `limit` (optional): default `50`, max `100`.
-- `cursor` (optional): opaque pagination cursor from previous response.
-- `since` (optional): unix timestamp; fetch events newer than timestamp.
-- `mode` (optional): reserved for algorithm variants (for example `default`, `strict`, `discover`).
+- `pubkey` (required): lowercase 64-char hex
+- `limit` (optional): default `50`, max `100`
+- `cursor` (optional): opaque paging token
+- `since` (optional): unix timestamp lower bound
+- `category` (optional): filter by category label (for example `news`, `opinion`)
+- `mode` (optional): algorithm variant (`default`, `strict`, `discover`)
 
 ### Response (200)
 
@@ -95,229 +79,330 @@ Returns a curated list of Nostr events for a user.
         "sig": "..."
       },
       "meta": {
-        "score": 0.9132,
+        "curationScore": 0.9132,
         "reasons": ["followed_author", "quality_threshold_pass"],
-        "sourceRelays": ["wss://relay.damus.io"],
-        "replyCount": 4
+        "replyCount": 4,
+        "categories": [
+          { "label": "news", "weight": 0.81 },
+          { "label": "opinion", "weight": 0.46 }
+        ],
+        "primaryCategory": "news",
+        "classificationVersion": "v1.0.0"
       }
     }
   ],
   "paging": {
-    "nextCursor": "eyJ1bnRpbCI6MTcxNDU3OTAwMH0",
+    "nextCursor": "eyJ1bnRpbCI6MTcxNDU3OTAwMCwibGFzdElkIjoiYWJjIn0",
     "hasMore": true
   },
   "generatedAt": 1714580100
 }
 ```
 
-### Response Rules
-
-- `items[].event` MUST be a valid Nostr event object.
-- Events SHOULD be ordered newest-first by `created_at`.
-- `nextCursor` MUST be opaque to clients.
-- `meta` is optional, but recommended for debugging/explainability.
-
 ### Error Responses
 
-- `400` invalid parameters
-- `401` failed auth/signature
+- `400` invalid query
+- `401` auth/signature failure
 - `429` rate limited
-- `500` server error
+- `500` internal error
 
-Error shape:
+---
 
-```json
-{
-  "error": {
-    "code": "INVALID_PUBKEY",
-    "message": "pubkey must be 64-char lowercase hex"
-  }
-}
+## 4) MongoDB Data Model (Mongoose)
+
+## 4.1 Collection: `posts`
+
+One document per original post (`event.id` unique).
+
+### Required fields to copy from Nostr event
+
+- `eventId` (string, unique) -> `event.id`
+- `pubkey` (string)
+- `kind` (number; always `1` here)
+- `createdAt` (number unix seconds)
+- `content` (string)
+- `tags` (array of arrays)
+- `sig` (string)
+
+### Curated metadata fields
+
+- `isOriginal` (boolean, true)
+- `sourceRelays` (string[])
+- `replyCount` (number, default 0)
+- `curationScore` (number, default 0)
+- `curationReasons` (string[])
+- `categories` (array of `{ label, weight }`)
+- `primaryCategory` (string | null)
+- `classificationVersion` (string)
+- `llmProvider` (string)
+- `llmModel` (string)
+- `classifiedAt` (Date)
+- `rawClassification` (mixed/json, optional, debug/audit)
+
+### Operational fields
+
+- `seenAt` (Date)
+- `updatedAtSource` (Date)
+- `ingestionVersion` (string)
+
+## 4.2 Suggested Mongoose Schema
+
+```js
+import mongoose from 'mongoose'
+
+const CategoryScoreSchema = new mongoose.Schema(
+  {
+    label: { type: String, required: true, lowercase: true, trim: true },
+    weight: { type: Number, required: true, min: 0, max: 1 }
+  },
+  { _id: false }
+)
+
+const PostSchema = new mongoose.Schema(
+  {
+    eventId: { type: String, required: true, unique: true, index: true },
+    pubkey: { type: String, required: true, index: true },
+    kind: { type: Number, required: true, enum: [1], index: true },
+    createdAt: { type: Number, required: true, index: true },
+    content: { type: String, required: true },
+    tags: { type: [[String]], default: [] },
+    sig: { type: String, required: true },
+
+    isOriginal: { type: Boolean, required: true, default: true, index: true },
+    sourceRelays: { type: [String], default: [] },
+    replyCount: { type: Number, default: 0, min: 0 },
+
+    curationScore: { type: Number, default: 0, index: true },
+    curationReasons: { type: [String], default: [] },
+    categories: { type: [CategoryScoreSchema], default: [] },
+    primaryCategory: { type: String, default: null, index: true },
+    classificationVersion: { type: String, default: 'v1.0.0' },
+    llmProvider: { type: String, default: '' },
+    llmModel: { type: String, default: '' },
+    classifiedAt: { type: Date, default: null },
+    rawClassification: { type: mongoose.Schema.Types.Mixed, default: null },
+
+    seenAt: { type: Date, default: Date.now },
+    updatedAtSource: { type: Date, default: Date.now },
+    ingestionVersion: { type: String, default: 'v1.0.0' }
+  },
+  { timestamps: true, versionKey: false }
+)
+
+PostSchema.index({ isOriginal: 1, createdAt: -1, eventId: 1 })
+PostSchema.index({ pubkey: 1, createdAt: -1 })
+PostSchema.index({ primaryCategory: 1, createdAt: -1 })
+PostSchema.index({ 'categories.label': 1, createdAt: -1 })
+
+export const PostModel = mongoose.model('Post', PostSchema)
 ```
 
 ---
 
-## 3.2 `GET /api/v1/feeds/curated/explain` (Optional)
+## 5) Category Taxonomy
 
-Returns explanation metadata without full event payloads.
+Use multi-label categorization with weights in `[0..1]`.
 
-Use cases:
+Recommended label set:
 
-- debugging curation policy
-- admin observability
-- user-facing "why am I seeing this?" UI
+- `news`
+- `opinion`
+- `question`
+- `educational`
+- `resource`
+- `personal_update`
+- `announcement`
+- `promotional`
+- `community`
+- `entertainment`
+- `media`
+- `longform`
 
-Minimal response:
+### Rules
+
+- Store 1..N labels above a threshold (for example `>= 0.35`).
+- `primaryCategory` = highest-weight label.
+- Unknown labels from LLM must be dropped or mapped to `other`.
+
+---
+
+## 6) LLM Classification Workflow
+
+## 6.1 High-Level Pipeline
+
+1. Ingest candidate events from relays.
+2. Keep only original posts.
+3. Upsert original posts into MongoDB.
+4. For posts with missing/stale classification:
+   - call LLM classification service
+   - validate response against schema
+   - normalize labels/weights
+   - update post document
+5. Curated endpoint queries MongoDB and returns ranked items.
+
+## 6.2 Prompt Input Contract
+
+Pass to LLM:
+
+- `eventId`
+- `content`
+- optional context fields:
+  - author pubkey
+  - createdAt
+  - extracted URLs
+  - language hint (if available)
+
+## 6.3 Prompt Requirements
+
+System prompt must instruct model to:
+
+- choose from fixed taxonomy only
+- return valid JSON only
+- provide a confidence weight per chosen label in `[0,1]`
+- avoid hallucinating unsupported fields
+
+## 6.4 Example Prompt (Specification-level)
+
+```text
+You classify social posts into a fixed taxonomy.
+Return JSON only with this shape:
+{
+  "categories": [{ "label": "news", "weight": 0.82 }],
+  "primaryCategory": "news",
+  "reasoning": ["short machine-readable reason strings"]
+}
+
+Allowed labels:
+news, opinion, question, educational, resource, personal_update,
+announcement, promotional, community, entertainment, media, longform
+
+Rules:
+- Use 1 to 4 labels max.
+- weight must be between 0 and 1.
+- primaryCategory must be one of the returned labels.
+- If uncertain, return lower weights rather than guessing.
+```
+
+## 6.5 Expected LLM Response JSON
 
 ```json
 {
-  "pubkey": "0123...",
-  "policyVersion": "2026-05-01",
-  "signals": ["follow_graph", "mute_rules", "keyword_filters", "engagement"],
-  "notes": "Filtered to original posts and removed blocked authors."
+  "categories": [
+    { "label": "news", "weight": 0.81 },
+    { "label": "opinion", "weight": 0.44 }
+  ],
+  "primaryCategory": "news",
+  "reasoning": ["followed_source_news_link", "contains_commentary_language"]
 }
 ```
 
----
+## 6.6 Response Validation and Normalization
 
-## 4) Data Contract Details
+After LLM returns:
 
-## 4.1 Event Eligibility
+- validate JSON with runtime schema (zod/joi recommended)
+- lowercase labels and enforce allow-list
+- clamp weights to `[0,1]`
+- sort descending by `weight`
+- remove duplicates
+- set `primaryCategory` to top weight if missing/invalid
+- persist sanitized payload to `categories`, `primaryCategory`, `curationReasons`
+- persist raw model output to `rawClassification` for debugging
 
-For compatibility with current Troutstr feed behavior:
+If validation fails:
 
-- Return only original kind-1 posts (no replies) by default:
-  - `kind === 1`
-  - no `e` tag references in `tags`
-
-If API returns replies, include policy flag in `meta` so client can decide whether to render.
-
-## 4.2 Follow List Dependency
-
-Server should derive follow list from latest kind-3 event for requesting user:
-
-- query latest kind-3 authored by `pubkey`
-- parse `p` tags into follow pubkeys
-- include self pubkey in candidate author set if desired by product policy
-
-## 4.3 Signature Verification (Recommended)
-
-Before returning events, server SHOULD verify each event signature to avoid serving invalid data:
-
-- drop invalid events
-- optionally include count of dropped events in diagnostics logs
+- store fallback classification:
+  - `categories: []`
+  - `primaryCategory: null`
+  - `curationReasons: ["classification_failed"]`
 
 ---
 
-## 5) Pagination Model
+## 7) Curated Ranking and Retrieval
 
-Use cursor pagination, not page number.
+## 7.1 Candidate Retrieval Query (MongoDB)
 
-Cursor should encode at least:
+Base filters:
 
-- boundary timestamp (`until`)
-- tiebreaker (`id`) for stable ordering when timestamps collide
+- `isOriginal: true`
+- `kind: 1`
+- `pubkey in follow-set` (derived from user's latest kind-3 follow list)
+- optional category filter (`primaryCategory` or `categories.label`)
 
-### Example server cursor payload (internal)
+Sort:
 
-```json
-{
-  "until": 1714579000,
-  "lastId": "abc123..."
-}
-```
+- primary: `curationScore desc`
+- secondary: `createdAt desc`
+- tiebreaker: `eventId asc`
 
-Client treats cursor as opaque string.
+## 7.2 Cursor Pagination
+
+Cursor should encode:
+
+- `lastScore`
+- `lastCreatedAt`
+- `lastEventId`
+
+Cursor remains opaque for client.
 
 ---
 
-## 6) Express.js Implementation Blueprint
-
-## 6.1 Suggested Project Structure
+## 8) Express App Structure
 
 ```text
 src/
   app.js
+  config/
+    mongo.js
+    llm.js
+  models/
+    Post.js
   routes/
     feeds.js
     health.js
   controllers/
     curatedFeedController.js
   services/
-    nostrQueryService.js
+    nostrIngestionService.js
     followGraphService.js
     curationService.js
-    eventValidationService.js
+    classificationService.js
+    feedQueryService.js
+  jobs/
+    classifyPosts.job.js
   middleware/
     auth.js
     rateLimit.js
     validateQuery.js
   utils/
     cursor.js
-    errors.js
+    taxonomy.js
+    eventGuards.js
 ```
 
-## 6.2 Minimal Route Wiring
+---
 
-- `GET /api/v1/health` -> liveness + dependency status
-- `GET /api/v1/feeds/curated` ->
-  1. validate query
-  2. authenticate identity
-  3. load follow set
-  4. fetch candidate events from relays/store
-  5. filter/rank/dedupe
-  6. return shaped response
+## 9) Client Compatibility Notes (Troutstr)
 
-## 6.3 Curation Pipeline (Server)
-
-1. Candidate retrieval:
-   - by authors in follow set
-   - bounded by cursor/since/limit
-2. Normalization:
-   - dedupe by `id`
-   - sort by `created_at` desc
-3. Filtering:
-   - exclude replies (default)
-   - apply mute/block/policy filters
-4. Ranking:
-   - assign score
-   - apply threshold
-5. Output shaping:
-   - event + optional meta
+- Keep response `items[].event` as valid Nostr event objects.
+- Troutstr can continue to use:
+  - dedupe by event id
+  - created_at sorting safeguards
+  - existing render components (`NoteContent`, profile fetches, embeds)
+- Curated feed mode should be switchable and non-breaking when API fails.
 
 ---
 
-## 7) Client Integration Notes (Troutstr)
+## 10) Security and Ops
 
-For clean integration with current code:
-
-- Keep using current render path (`NoteContent`, profile enrichment, embeds).
-- Replace/augment feed data source in `Feed.jsx`:
-  - default mode: existing relay query path
-  - curated mode: API fetch path
-- Continue running client-side safety steps:
-  - `dedupeById`
-  - sort by `created_at`
-
-### Feed mode switch suggestion
-
-- Persist mode in local storage (`default` | `curated`)
-- Display active mode in Feed UI label
-
-### Failure fallback
-
-If curated API errors:
-
-- show non-blocking alert
-- allow one-click return to default feed mode
-
----
-
-## 8) Operational Requirements
-
-- Rate limiting per IP and/or pubkey
-- Structured logs with request id and pubkey
-- Timeout and retry policy for relay/backend dependencies
-- Health endpoint should include dependency status
-
----
-
-## 9) Security Considerations
-
-- Validate all query params strictly.
-- Sanitize and bound cursor decoding.
-- Verify identity signature where possible.
-- Do not trust client-provided follow lists.
-- Use CORS allowlist for trusted origins.
-
----
-
-## 10) Versioning and Compatibility
-
-- Prefix routes with `/api/v1`.
-- Include response `version`.
-- Additive changes to `meta` are safe.
-- Breaking field changes require `/api/v2`.
+- Validate `pubkey`, `limit`, `cursor`, `since`, `category`.
+- Use CORS allowlist.
+- Rate limit by IP and pubkey.
+- Log request ids and classification failures.
+- Expose dependency state in `/health`:
+  - MongoDB connectivity
+  - relay ingestion status
+  - LLM provider reachability (optional)
 
 ---
 
@@ -327,19 +412,19 @@ If curated API errors:
 curl "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&limit=50"
 ```
 
-With auth header example:
+With category filter:
 
 ```bash
-curl \
-  -H "Authorization: Bearer <signed-token>" \
-  "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&limit=50"
+curl "http://localhost:8080/api/v1/feeds/curated?pubkey=<hex>&category=news&limit=25"
 ```
 
 ---
 
 ## 12) Acceptance Criteria
 
-- Endpoint returns valid Nostr event payloads consumable by current Troutstr feed rendering.
-- Pagination is deterministic and stable across repeated calls.
-- Default mode remains relay-derived; curated mode is optional and switchable.
-- Curated API failures do not break default feed experience.
+- Every stored document in `posts` represents an original kind-1 post only.
+- `eventId` uniqueness prevents duplicates.
+- Curated endpoint returns Nostr-compatible event payloads.
+- Category labels and weights are persisted from validated LLM output.
+- Invalid LLM output fails safe and does not break endpoint responses.
+- Default Troutstr relay feed remains available and unaffected.
