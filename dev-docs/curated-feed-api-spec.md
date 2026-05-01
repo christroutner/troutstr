@@ -399,7 +399,7 @@ This section defines the background ingestion system that periodically pulls fre
 
 Use a timer-driven controller (for example `setInterval`) in the API process:
 
-- interval config: `INGEST_INTERVAL_MS` (default `60000`)
+- interval config: `INGEST_INTERVAL_MS` (default `120000`)
 - run-at-start: immediate first pass on process boot
 - overlap guard: skip tick if previous run still active
 
