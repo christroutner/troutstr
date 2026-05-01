@@ -35,11 +35,13 @@ export default function Feed () {
   const { pool: poolRef, pubkeyHex, follows, readUrls, refreshFollows } = useNostr()
   const [events, setEvents] = useState([])
   const [profiles, setProfiles] = useState({})
+  const [embeddedEvents, setEmbeddedEvents] = useState({})
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const [hasMore, setHasMore] = useState(true)
   const newestTs = useRef(Math.floor(Date.now() / 1000))
+  const fetchingEmbeddedIdsRef = useRef(new Set())
 
   const authors = useMemo(() => buildAuthors(pubkeyHex, follows), [pubkeyHex, follows])
   const readUrlsKey = readUrls.join('|')
@@ -90,6 +92,54 @@ export default function Feed () {
       return sortEventsDescending(dedupeById(evs))
     },
     [poolRef, readUrls]
+  )
+
+  const fetchEmbeddedEvents = useCallback(
+    async (refs) => {
+      const pool = poolRef.current
+      if (!pool || readUrls.length === 0 || !Array.isArray(refs) || refs.length === 0) return
+      const byId = {}
+      for (const ref of refs) {
+        if (!ref?.id) continue
+        if (embeddedEvents[ref.id]) continue
+        if (fetchingEmbeddedIdsRef.current.has(ref.id)) continue
+        byId[ref.id] = ref
+      }
+      const missingIds = Object.keys(byId)
+      if (!missingIds.length) return
+      for (const id of missingIds) fetchingEmbeddedIdsRef.current.add(id)
+      try {
+        const hintedRelays = refs.flatMap((r) => (Array.isArray(r?.relays) ? r.relays : []))
+        const relaySet = new Set([...readUrls, ...hintedRelays])
+        const relaysToUse = [...relaySet]
+        const evs = await pool.querySync(relaysToUse, {
+          ids: missingIds,
+          limit: missingIds.length * 3
+        })
+        const latestById = new Map()
+        for (const ev of evs) {
+          if (!ev?.id) continue
+          const prev = latestById.get(ev.id)
+          if (!prev || ev.created_at > prev.created_at) latestById.set(ev.id, ev)
+        }
+        if (latestById.size > 0) {
+          const foundEvents = [...latestById.values()]
+          setEmbeddedEvents((prev) => {
+            const next = { ...prev }
+            for (const ev of foundEvents) {
+              next[ev.id] = ev
+            }
+            return next
+          })
+          await fetchProfilesFor(foundEvents.map((e) => e.pubkey))
+        }
+      } catch (e) {
+        console.warn('embedded-events', e)
+      } finally {
+        for (const id of missingIds) fetchingEmbeddedIdsRef.current.delete(id)
+      }
+    },
+    [poolRef, readUrls, embeddedEvents, fetchProfilesFor]
   )
 
   const initialLoad = useCallback(async () => {
@@ -221,7 +271,12 @@ export default function Feed () {
                 </div>
               </Card.Header>
               <Card.Body>
-                <NoteContent content={ev.content} />
+                <NoteContent
+                  content={ev.content}
+                  embeddedEvents={embeddedEvents}
+                  profiles={profiles}
+                  onNostrRefs={fetchEmbeddedEvents}
+                />
               </Card.Body>
             </Card>
           )

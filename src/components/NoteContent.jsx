@@ -1,9 +1,11 @@
-import React from 'react'
+import React, { useEffect, useMemo } from 'react'
+import { nip19 } from 'nostr-tools'
 
-const URL_REGEX = /https?:\/\/[^\s<>'"()[\]{}]+/gi
+const TOKEN_REGEX = /(https?:\/\/[^\s<>'"()[\]{}]+|nostr:[^\s<>'"()[\]{}]+)/gi
 
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i
 const VIDEO_EXT = /\.(mp4|webm|ogg)(\?|$)/i
+const TRAILING_PUNCTUATION = /[),.;!?]+$/
 
 function isImageUrl (url) {
   try {
@@ -23,27 +25,124 @@ function isVideoUrl (url) {
   }
 }
 
+function shortenPubkey (hex) {
+  if (!hex || hex.length < 16) return hex || ''
+  return `${hex.slice(0, 8)}…${hex.slice(-6)}`
+}
+
 /**
  * Renders note text with plain URLs turned into links; image/video URLs render as media.
  */
-export default function NoteContent ({ content }) {
-  const text = content ?? ''
-  const parts = []
-  let last = 0
-  let m
-  const re = new RegExp(URL_REGEX.source, URL_REGEX.flags)
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) {
-      parts.push({ type: 'text', value: text.slice(last, m.index) })
+function decodeNostrRef (value) {
+  const raw = String(value || '')
+  const entity = raw.startsWith('nostr:') ? raw.slice(6) : raw
+  if (!entity) return null
+  let decoded
+  try {
+    decoded = nip19.decode(entity)
+  } catch {
+    return null
+  }
+  if (decoded.type === 'nevent' && decoded.data?.id) {
+    return {
+      type: decoded.type,
+      id: decoded.data.id,
+      relays: Array.isArray(decoded.data.relays) ? decoded.data.relays : [],
+      entity
     }
-    parts.push({ type: 'url', value: m[0] })
-    last = m.index + m[0].length
   }
-  if (last < text.length) {
-    parts.push({ type: 'text', value: text.slice(last) })
+  if (decoded.type === 'note' && typeof decoded.data === 'string') {
+    return { type: decoded.type, id: decoded.data, relays: [], entity }
   }
-  if (!parts.length) {
-    parts.push({ type: 'text', value: text })
+  return null
+}
+
+export default function NoteContent ({
+  content,
+  embeddedEvents = {},
+  profiles = {},
+  onNostrRefs
+}) {
+  const text = content ?? ''
+  const { parts, nostrRefs } = useMemo(() => {
+    const nextParts = []
+    const refs = []
+    let last = 0
+    let m
+    const re = new RegExp(TOKEN_REGEX.source, TOKEN_REGEX.flags)
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) {
+        nextParts.push({ type: 'text', value: text.slice(last, m.index) })
+      }
+      const rawToken = m[0]
+      const tokenValue = rawToken.replace(TRAILING_PUNCTUATION, '')
+      const trailing = rawToken.slice(tokenValue.length)
+      if (tokenValue.startsWith('nostr:')) {
+        const ref = decodeNostrRef(tokenValue)
+        nextParts.push({ type: 'nostr', value: tokenValue, ref })
+        if (ref?.id) refs.push(ref)
+      } else {
+        nextParts.push({ type: 'url', value: tokenValue })
+      }
+      if (trailing) {
+        nextParts.push({ type: 'text', value: trailing })
+      }
+      last = m.index + m[0].length
+    }
+    if (last < text.length) {
+      nextParts.push({ type: 'text', value: text.slice(last) })
+    }
+    if (!nextParts.length) {
+      nextParts.push({ type: 'text', value: text })
+    }
+    return { parts: nextParts, nostrRefs: refs }
+  }, [text])
+
+  useEffect(() => {
+    if (nostrRefs.length > 0 && typeof onNostrRefs === 'function') {
+      onNostrRefs(nostrRefs)
+    }
+  }, [nostrRefs, onNostrRefs])
+
+  function renderEmbeddedEvent (ref, key) {
+    if (!ref?.id) return null
+    const ev = embeddedEvents[ref.id]
+    if (!ev) return null
+    const prof = profiles[ev.pubkey] || {}
+    const name = prof.name || shortenPubkey(ev.pubkey)
+    let npubDisplay = ''
+    try {
+      npubDisplay = nip19.npubEncode(String(ev.pubkey).toLowerCase())
+    } catch {
+      npubDisplay = ev.pubkey
+    }
+    return (
+      <div key={key} className='border rounded mt-2 bg-light overflow-hidden'>
+        <div className='d-flex align-items-center gap-2 py-2 px-2 border-bottom'>
+          {prof.picture ? (
+            <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
+          ) : (
+            <div
+              className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
+            >
+              {name.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+          <div className='flex-grow-1 min-width-0'>
+            <div className='fw-semibold text-truncate'>{name}</div>
+            <div className='small text-muted text-truncate' title={npubDisplay}>
+              {shortenPubkey(npubDisplay)}
+            </div>
+          </div>
+          <div className='small text-muted text-nowrap'>
+            {new Date(ev.created_at * 1000).toLocaleString()}
+          </div>
+        </div>
+        <div className='p-2' style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+          {ev.content || ''}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -57,6 +156,17 @@ export default function NoteContent ({ content }) {
           )
         }
         const url = p.value
+        if (p.type === 'nostr') {
+          const href = p.ref?.entity ? `https://njump.me/${p.ref.entity}` : '#'
+          return (
+            <span key={i} className='d-block my-1'>
+              <a href={href} target='_blank' rel='noopener noreferrer'>
+                {url}
+              </a>
+              {renderEmbeddedEvent(p.ref, `${i}-${p.ref?.id || 'nostr'}`)}
+            </span>
+          )
+        }
         if (isImageUrl(url)) {
           return (
             <span key={i} className='d-block my-2'>
