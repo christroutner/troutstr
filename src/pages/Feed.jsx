@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, Button, Card, Spinner } from 'react-bootstrap'
+import { Alert, Button, Card, Modal, Spinner } from 'react-bootstrap'
 import { finalizeEvent, nip19 } from 'nostr-tools'
 import { Link } from 'react-router-dom'
 import NoteContent from '../components/NoteContent'
@@ -32,11 +32,27 @@ function buildAuthors (pubkeyHex, followList) {
   return [...new Set([pubkeyHex, ...(followList || [])])]
 }
 
+function eventIdsFromETags (tags = []) {
+  return tags
+    .filter((t) => Array.isArray(t) && t[0] === 'e' && t[1])
+    .map((t) => t[1])
+}
+
+function isOriginalPost (ev) {
+  if (!ev || ev.kind !== 1) return false
+  return eventIdsFromETags(ev.tags).length === 0
+}
+
 export default function Feed () {
   const { pool: poolRef, pubkeyHex, secretKey, follows, readUrls, writeUrls, refreshFollows } = useNostr()
   const [events, setEvents] = useState([])
   const [profiles, setProfiles] = useState({})
   const [embeddedEvents, setEmbeddedEvents] = useState({})
+  const [repliesByPost, setRepliesByPost] = useState({})
+  const [replyCountByPost, setReplyCountByPost] = useState({})
+  const [showRepliesModal, setShowRepliesModal] = useState(false)
+  const [selectedPostId, setSelectedPostId] = useState('')
+  const [loadingRepliesId, setLoadingRepliesId] = useState('')
   const [likedEventIds, setLikedEventIds] = useState({})
   const [likingEventIds, setLikingEventIds] = useState({})
   const [loading, setLoading] = useState(false)
@@ -87,12 +103,12 @@ export default function Feed () {
         throw new Error('Add at least one read relay in Settings.')
       }
       const evs = await pool.querySync(readUrls, {
-        kinds: [1, 2],
+        kinds: [1],
         authors: authorList,
         until: untilTs,
-        limit: PAGE
+        limit: PAGE * 2
       })
-      return sortEventsDescending(dedupeById(evs))
+      return sortEventsDescending(dedupeById(evs)).filter(isOriginalPost).slice(0, PAGE)
     },
     [poolRef, readUrls]
   )
@@ -145,6 +161,39 @@ export default function Feed () {
     [poolRef, readUrls, embeddedEvents, fetchProfilesFor]
   )
 
+  const fetchReplySummariesFor = useCallback(async (postIds) => {
+    const pool = poolRef.current
+    if (!pool || readUrls.length === 0 || !Array.isArray(postIds) || postIds.length === 0) return
+    try {
+      const ids = [...new Set(postIds)]
+      const replyEvents = await pool.querySync(readUrls, {
+        kinds: [1],
+        '#e': ids,
+        limit: Math.max(300, ids.length * 25)
+      })
+      const byPost = {}
+      for (const id of ids) byPost[id] = []
+      for (const ev of dedupeById(replyEvents)) {
+        const referenced = eventIdsFromETags(ev.tags)
+        for (const refId of referenced) {
+          if (byPost[refId]) byPost[refId].push(ev)
+        }
+      }
+      for (const id of Object.keys(byPost)) {
+        byPost[id] = sortEventsDescending(byPost[id])
+      }
+      setRepliesByPost((prev) => ({ ...prev, ...byPost }))
+      setReplyCountByPost((prev) => {
+        const next = { ...prev }
+        for (const [id, list] of Object.entries(byPost)) next[id] = list.length
+        return next
+      })
+      await fetchProfilesFor(replyEvents.map((e) => e.pubkey))
+    } catch (e) {
+      console.warn('reply-summaries', e)
+    }
+  }, [poolRef, readUrls, fetchProfilesFor])
+
   const initialLoad = useCallback(async () => {
     if (!pubkeyHex) return
     setLoading(true)
@@ -158,18 +207,21 @@ export default function Feed () {
       const first = await queryFeedPage(authorList, now)
       setEvents(first)
       setLikedEventIds({})
+      setRepliesByPost({})
+      setReplyCountByPost({})
       if (first.length < PAGE) setHasMore(false)
       if (first.length) {
         newestTs.current = Math.max(...first.map((e) => e.created_at)) + 1
       }
       await fetchProfilesFor(first.map((e) => e.pubkey))
+      await fetchReplySummariesFor(first.map((e) => e.id))
     } catch (e) {
       setError(e?.message || String(e))
       setEvents([])
     } finally {
       setLoading(false)
     }
-  }, [pubkeyHex, queryFeedPage, refreshFollows, fetchProfilesFor])
+  }, [pubkeyHex, queryFeedPage, refreshFollows, fetchProfilesFor, fetchReplySummariesFor])
 
   const likeEvent = useCallback(async (targetEvent) => {
     const pool = poolRef.current
@@ -236,10 +288,23 @@ export default function Feed () {
       setEvents(combined)
       if (page.length < PAGE) setHasMore(false)
       await fetchProfilesFor(page.map((e) => e.pubkey))
+      await fetchReplySummariesFor(page.map((e) => e.id))
     } catch (e) {
       setError(e?.message || String(e))
     } finally {
       setLoadingMore(false)
+    }
+  }
+
+  const openRepliesModal = async (postId) => {
+    setSelectedPostId(postId)
+    setShowRepliesModal(true)
+    if (repliesByPost[postId]) return
+    setLoadingRepliesId(postId)
+    try {
+      await fetchReplySummariesFor([postId])
+    } finally {
+      setLoadingRepliesId('')
     }
   }
 
@@ -251,20 +316,22 @@ export default function Feed () {
       try {
         const since = newestTs.current
         const fresh = await pool.querySync(readUrls, {
-          kinds: [1, 2],
+          kinds: [1],
           authors,
           since,
           limit: 100
         })
-        if (!fresh.length) return
+        const freshOriginals = dedupeById(fresh).filter(isOriginalPost)
+        if (!freshOriginals.length) return
         const top = Math.max(...fresh.map((e) => e.created_at))
         if (top >= newestTs.current) newestTs.current = top + 1
-        setEvents((prev) => sortEventsDescending(dedupeById([...fresh, ...prev])))
+        setEvents((prev) => sortEventsDescending(dedupeById([...freshOriginals, ...prev])))
         await fetchProfilesFor(fresh.map((e) => e.pubkey))
+        await fetchReplySummariesFor(freshOriginals.map((e) => e.id))
       } catch (_) {}
     }, 45000)
     return () => clearInterval(id)
-  }, [pubkeyHex, readUrlsKey, authorsKey, authors, readUrls, poolRef, fetchProfilesFor])
+  }, [pubkeyHex, readUrlsKey, authorsKey, authors, readUrls, poolRef, fetchProfilesFor, fetchReplySummariesFor])
 
   if (!pubkeyHex) {
     return <Alert variant='secondary'>Log in to see your feed.</Alert>
@@ -283,7 +350,7 @@ export default function Feed () {
         </Button>
       </div>
       <p className='text-secondary small'>
-        Showing notes (kinds 1 and 2) from you and your follows (kind 3). Newest first.
+        Showing original notes from you and your follows (kind 3). Newest first.
       </p>
       {error ? <Alert variant='danger'>{error}</Alert> : null}
       {loading
@@ -345,6 +412,13 @@ export default function Feed () {
                     >
                       {likingEventIds[ev.id] ? 'Liking…' : likedEventIds[ev.id] ? 'Liked' : 'Like'}
                     </Button>
+                    <Button
+                      variant='outline-primary'
+                      size='sm'
+                      onClick={() => openRepliesModal(ev.id)}
+                    >
+                      Replies: {replyCountByPost[ev.id] || 0}
+                    </Button>
                   </Card.Footer>
                 </Card>
               )
@@ -361,6 +435,70 @@ export default function Feed () {
           </div>
           )
         : null}
+      <Modal show={showRepliesModal} onHide={() => setShowRepliesModal(false)} size='lg' centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Replies</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {loadingRepliesId === selectedPostId
+            ? (
+              <div className='text-center py-4'><Spinner animation='border' /></div>
+              )
+            : (repliesByPost[selectedPostId] || []).length === 0
+                ? (
+                  <Alert variant='light' className='mb-0'>No replies found for this post.</Alert>
+                  )
+                : (
+                    (repliesByPost[selectedPostId] || [])
+                      .slice()
+                      .sort((a, b) => a.created_at - b.created_at)
+                      .map((reply) => {
+                        const prof = profiles[reply.pubkey] || {}
+                        const name = prof.name || shortenPubkey(reply.pubkey)
+                        let npubDisplay = ''
+                        try {
+                          npubDisplay = nip19.npubEncode(String(reply.pubkey).toLowerCase())
+                        } catch {
+                          npubDisplay = reply.pubkey
+                        }
+                        return (
+                          <Card key={reply.id} className='mb-3'>
+                            <Card.Header className='d-flex align-items-center gap-2 py-2'>
+                              {prof.picture
+                                ? (
+                                  <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
+                                  )
+                                : (
+                                  <div
+                                    className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
+                                  >
+                                    {name.slice(0, 2).toUpperCase()}
+                                  </div>
+                                  )}
+                              <div className='flex-grow-1 min-width-0'>
+                                <div className='fw-semibold text-truncate'>{name}</div>
+                                <div className='small text-muted text-truncate' title={npubDisplay}>
+                                  {shortenPubkey(npubDisplay)}
+                                </div>
+                              </div>
+                              <div className='small text-muted text-nowrap'>
+                                {new Date(reply.created_at * 1000).toLocaleString()}
+                              </div>
+                            </Card.Header>
+                            <Card.Body>
+                              <NoteContent
+                                content={reply.content}
+                                embeddedEvents={embeddedEvents}
+                                profiles={profiles}
+                                onNostrRefs={fetchEmbeddedEvents}
+                              />
+                            </Card.Body>
+                          </Card>
+                        )
+                      })
+                  )}
+        </Modal.Body>
+      </Modal>
     </div>
   )
 }
