@@ -5,6 +5,7 @@ import NavMenu from './components/NavMenu'
 import { NostrProvider, useNostr } from './context/NostrContext'
 import Feed from './pages/Feed'
 import Login from './pages/Login'
+import Profile from './pages/Profile'
 import Settings from './pages/Settings'
 
 function Protected ({ children }) {
@@ -36,6 +37,14 @@ function AppShell () {
             element={
               <Protected>
                 <Settings />
+              </Protected>
+            }
+          />
+          <Route
+            path='/profile/:pubkey'
+            element={
+              <Protected>
+                <Profile />
               </Protected>
             }
           />

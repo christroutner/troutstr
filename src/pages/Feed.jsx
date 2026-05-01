@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Button, Card, Spinner } from 'react-bootstrap'
 import { finalizeEvent, nip19 } from 'nostr-tools'
+import { Link } from 'react-router-dom'
 import NoteContent from '../components/NoteContent'
 import { useNostr } from '../context/NostrContext'
 import {
@@ -304,23 +305,25 @@ export default function Feed () {
               return (
                 <Card key={ev.id} className='mb-3'>
                   <Card.Header className='d-flex align-items-center gap-2 py-2'>
-                    {prof.picture
-                      ? (
-                        <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
-                        )
-                      : (
-                        <div
-                          className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
-                        >
-                          {name.slice(0, 2).toUpperCase()}
+                    <Link to={`/profile/${ev.pubkey}`} className='post-author-link d-flex align-items-center gap-2 flex-grow-1 min-width-0'>
+                      {prof.picture
+                        ? (
+                          <img src={prof.picture} alt='' className='note-avatar' referrerPolicy='no-referrer' />
+                          )
+                        : (
+                          <div
+                            className='note-avatar bg-secondary d-flex align-items-center justify-content-center text-white small'
+                          >
+                            {name.slice(0, 2).toUpperCase()}
+                          </div>
+                          )}
+                      <div className='min-width-0'>
+                        <div className='fw-semibold text-truncate'>{name}</div>
+                        <div className='small text-muted text-truncate' title={npubDisplay}>
+                          {shortenPubkey(npubDisplay)}
                         </div>
-                        )}
-                    <div className='flex-grow-1 min-width-0'>
-                      <div className='fw-semibold text-truncate'>{name}</div>
-                      <div className='small text-muted text-truncate' title={npubDisplay}>
-                        {shortenPubkey(npubDisplay)}
                       </div>
-                    </div>
+                    </Link>
                     <div className='small text-muted text-nowrap'>
                       {new Date(ev.created_at * 1000).toLocaleString()}
                     </div>

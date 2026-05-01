@@ -30,3 +30,14 @@
   object-fit: cover;
   border-radius: 50%;
 }
+
+.post-author-link {
+  text-decoration: none;
+  color: inherit;
+}
+
+.post-author-link:hover {
+  text-decoration: none;
+  color: inherit;
+  opacity: 0.9;
+}
