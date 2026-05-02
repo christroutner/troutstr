@@ -4,7 +4,7 @@ import { nip19 } from 'nostr-tools'
 import { Link, useParams } from 'react-router-dom'
 import NoteContent from '../components/NoteContent'
 import { useNostr } from '../context/NostrContext'
-import { parseProfileContent, sortEventsDescending } from '../lib/nostr'
+import { nostrCreatedAtToDate, parseProfileContent, sortEventsDescending } from '../lib/nostr'
 
 function shortenPubkey (hex) {
   if (!hex || hex.length < 16) return hex || ''
@@ -210,7 +210,7 @@ export default function Profile () {
                     <Card key={ev.id} className='mb-3'>
                       <Card.Body>
                         <div className='small text-muted mb-2'>
-                          {new Date(ev.created_at * 1000).toLocaleString()}
+                          {nostrCreatedAtToDate(ev.created_at).toLocaleString()}
                         </div>
                         <NoteContent
                           content={ev.content}

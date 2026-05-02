@@ -4,7 +4,7 @@ import { nip19 } from 'nostr-tools'
 import { Link, useParams } from 'react-router-dom'
 import NoteContent from '../components/NoteContent'
 import { useNostr } from '../context/NostrContext'
-import { dedupeById, parseProfileContent, sortEventsDescending } from '../lib/nostr'
+import { dedupeById, nostrCreatedAtToDate, parseProfileContent, sortEventsDescending } from '../lib/nostr'
 
 function shortenPubkey (hex) {
   if (!hex || hex.length < 16) return hex || ''
@@ -172,7 +172,7 @@ export default function Post () {
           </div>
         </Link>
         <div className='small text-muted text-nowrap'>
-          {new Date(ev.created_at * 1000).toLocaleString()}
+          {nostrCreatedAtToDate(ev.created_at).toLocaleString()}
         </div>
       </Card.Header>
     )

@@ -136,6 +136,25 @@ export function hexToSecretKey (hex) {
   return hexToBytes(hex.toLowerCase())
 }
 
+/** Timestamps in ms are ≥ this; Nostr `created_at` unix seconds stay below until year ~33688. */
+const NOSTR_CREATED_AT_MS_FLOOR = 1_000_000_000_000
+
+/**
+ * Convert Nostr `created_at` (unix seconds) to a Date. Handles legacy values already
+ * in milliseconds (e.g. curated API rows affected by a Mongoose timestamp collision).
+ * @param {string|number|null|undefined} value
+ * @returns {Date}
+ */
+export function nostrCreatedAtToDate (value) {
+  if (value == null || value === '') return new Date(NaN)
+  const n = Number(value)
+  if (Number.isFinite(n)) {
+    if (n >= NOSTR_CREATED_AT_MS_FLOOR) return new Date(n)
+    return new Date(n * 1000)
+  }
+  return new Date(value)
+}
+
 export function dedupeById (events) {
   const map = new Map()
   for (const ev of events) {

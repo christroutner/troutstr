@@ -4,6 +4,7 @@ import { nip19 } from 'nostr-tools'
 import { Link } from 'react-router-dom'
 import CategoryTagCloud from './CategoryTagCloud'
 import NoteContent from './NoteContent'
+import { nostrCreatedAtToDate } from '../lib/nostr'
 
 function shortenPubkey (hex) {
   if (!hex || hex.length < 16) return hex || ''
@@ -59,7 +60,7 @@ export default function FeedPostCard ({
           Open
         </Link>
         <div className='small text-muted text-nowrap'>
-          {new Date(ev.created_at * 1000).toLocaleString()}
+          {nostrCreatedAtToDate(ev.created_at).toLocaleString()}
         </div>
       </Card.Header>
       <Card.Body>

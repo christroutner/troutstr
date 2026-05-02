@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { nip19 } from 'nostr-tools'
 import { Link } from 'react-router-dom'
+import { nostrCreatedAtToDate } from '../lib/nostr'
 
 const TOKEN_REGEX = /(https?:\/\/[^\s<>'"()[\]{}]+|nostr:[^\s<>'"()[\]{}]+)/gi
 const CONTENT_PREVIEW_LIMIT = 1000
@@ -175,7 +176,7 @@ export default function NoteContent ({
             </div>
           </Link>
           <div className='small text-muted text-nowrap'>
-            {new Date(ev.created_at * 1000).toLocaleString()}
+            {nostrCreatedAtToDate(ev.created_at).toLocaleString()}
           </div>
         </div>
         <div className='p-2' style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
